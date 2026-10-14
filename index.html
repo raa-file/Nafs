@@ -93,6 +93,9 @@ label.f span{display:block;font-size:13px;font-weight:600;color:var(--indigo);ma
 .node.summit{width:84px;height:84px;background:#fff;border-color:var(--line);color:var(--muted)}
 .node.summit.done{background:linear-gradient(145deg,var(--orange),#f5a54a);border-color:var(--orange);color:#fff}
 .node.summit svg{width:36px;height:36px}
+.car{position:absolute;left:0;top:0;width:34px;height:58px;z-index:3;pointer-events:none;filter:drop-shadow(0 3px 4px rgba(36,26,77,.25));will-change:transform}
+.car svg{display:block}
+.start{position:absolute;transform:translateX(-50%);font-size:12px;font-weight:600;color:var(--muted);direction:rtl}
 .lbl{position:absolute;transform:translateY(-50%);width:118px;direction:rtl;font-size:12.5px;line-height:1.45;color:var(--ink)}
 .lbl b{display:block;font-size:13px;color:var(--indigo)}
 .lbl.l{text-align:right} .lbl.r{text-align:left}
@@ -133,10 +136,10 @@ table.qt th:first-child{border-top-right-radius:10px} table.qt th:last-child{bor
 .dock .btn{max-width:488px;margin:0 auto;display:flex}
 
 /* ---------- done ---------- */
-.done{text-align:center;padding:30px 16px 40px}
+.fin{text-align:center;padding:30px 16px 40px}
 .badge{width:120px;height:120px;border-radius:50%;background:var(--green-l);display:grid;place-items:center;margin:0 auto 10px;border:3px solid var(--green)}
 .badge svg{width:60px;height:60px;color:var(--green)}
-.done h2{margin:6px 0 2px;font-size:26px;color:var(--indigo)}
+.fin h2{margin:6px 0 2px;font-size:26px;color:var(--indigo)}
 .starrow{display:flex;justify-content:center;gap:8px;margin:12px 0}
 .starrow svg{width:46px;height:46px;opacity:0;transform:scale(.4) rotate(-20deg)}
 .starrow svg.on{animation:pop .5s forwards}
@@ -198,8 +201,9 @@ table.qt th:first-child{border-top-right-radius:10px} table.qt th:last-child{bor
    إعدادات الموقع — عدّلي هنا فقط
    ===================================================================== */
 const CONFIG = {
-  teacherName: "",            // اسم المعلمة (اتركيه فارغًا الآن، واكتبيه لاحقًا بين علامتي الاقتباس)
-  teacherPassword: "1234",    // رمز دخول لوحة المعلمة — غيّريه قبل النشر
+  teacherName: "منى محمد القادري",   // اسم المعلمة
+  schoolName: "الابتدائية الثانية بالمبرز",   // اسم المدرسة
+  teacherPassword: "1409",    // رمز دخول لوحة المعلمة
   classes: ["السادس أ", "السادس ب", "السادس ج", "السادس د"],   // قائمة الفصول
   // لحفظ نتائج جميع الطالبات في مكان واحد (اختياري). اتركيهما فارغين لحفظ البيانات على جهاز كل طالبة فقط.
   // الإعداد مشروح في ملف «آلية عمل الموقع».
@@ -217,6 +221,7 @@ const LOGO = "data:image/webp;base64,UklGRuDiAABXRUJQVlA4WAoAAAAQAAAAowEAYQEAQUx
 /* ===================================================================== */
 const N = STATIONS.length;
 const TOTAL_Q = STATIONS.reduce((s, st) => s + st.q.length, 0);
+const CAR = '<svg viewBox="0 0 34 58" width="34" height="58"><ellipse cx="17" cy="31" rx="15" ry="26" fill="#241A4D" opacity=".18"/><rect x="2" y="12" width="6" height="12" rx="2.5" fill="#241A4D"/><rect x="26" y="12" width="6" height="12" rx="2.5" fill="#241A4D"/><rect x="2" y="36" width="6" height="12" rx="2.5" fill="#241A4D"/><rect x="26" y="36" width="6" height="12" rx="2.5" fill="#241A4D"/><rect x="5" y="3" width="24" height="52" rx="11" fill="#EE7F1F"/><rect x="9" y="14" width="16" height="10" rx="3.5" fill="#1F9DB5"/><rect x="9" y="38" width="16" height="7" rx="3" fill="#1F9DB5"/><rect x="10" y="26" width="14" height="10" rx="3" fill="#F7B26A"/><circle cx="10.5" cy="6.5" r="2.3" fill="#FFE27A"/><circle cx="23.5" cy="6.5" r="2.3" fill="#FFE27A"/><rect x="9" y="51" width="5" height="2.5" rx="1" fill="#D6455A"/><rect x="20" y="51" width="5" height="2.5" rx="1" fill="#D6455A"/></svg>';
 const LETTERS = ["أ", "ب", "ج", "د"];
 const $app = document.getElementById("app");
 const ar = n => String(n).replace(/\d/g, d => "٠١٢٣٤٥٦٧٨٩"[d]);
@@ -309,6 +314,7 @@ const I = {
 };
 const stars = (n, size) => '<span class="stars">' + [0,1,2].map(i => I.star(i < n ? "#EE7F1F" : "#E3DEF1")).join("") + "</span>";
 const teacherLine = () => "المعلمة: " + (CONFIG.teacherName ? esc(CONFIG.teacherName) : '<span class="blank"></span>');
+const schoolLine = () => CONFIG.schoolName ? esc(CONFIG.schoolName) : "";
 
 /* ===================== شاشة الدخول ===================== */
 function orbitSVG(){
@@ -333,7 +339,7 @@ function viewLogin(tab = "s", msg = ""){
     '<form id="ft" autocomplete="off"><label class="f"><span>رمز دخول المعلمة</span><input class="in" id="tp" type="password" required placeholder="••••"></label>' +
     '<button class="btn" type="submit">فتح لوحة النتائج</button></form>') +
   "</section></div>" +
-  '<div class="foot">' + teacherLine() + "</div></main>";
+  '<div class="foot">' + (CONFIG.schoolName ? schoolLine() + "<br>" : "") + teacherLine() + "</div></main>";
   document.getElementById("t-s").onclick = () => viewLogin("s");
   document.getElementById("t-t").onclick = () => viewLogin("t");
   const fs = document.getElementById("fs"), ft = document.getElementById("ft");
@@ -371,31 +377,30 @@ function viewMap(){
     '<div class="stat"><b>' + ar(S.solved) + "</b><small>سؤال محلول</small></div>" +
     '<div class="stat"><b>' + (S.acc === null ? "—" : ar(S.acc) + "٪") + "</b><small>من أول محاولة</small></div></div>" +
     '<div class="meter" aria-hidden="true"><i style="width:' + Math.round(S.solved / TOTAL_Q * 100) + '%"></i></div>' +
-    '<div style="display:flex;justify-content:space-between;margin-top:6px"><span class="sync" id="sync"></span><span class="sync">' + teacherLine() + "</span></div>" +
+    '<div style="display:flex;justify-content:space-between;margin-top:6px;gap:8px"><span class="sync" id="sync"></span><span class="sync" style="text-align:left">' + teacherLine() + "</span></div>" +
     '<div class="trail" id="trail"></div></main>';
   document.getElementById("lo").onclick = logout;
-  paintSync(); drawTrail(S);
-  const cur = document.querySelector(".node.cur") || document.querySelector(".node.summit");
-  if (cur) setTimeout(() => cur.scrollIntoView({ block: "center", behavior: "auto" }), 30);
+  paintSync(); drawTrail(S, true);
 }
-function drawTrail(S){
+function drawTrail(S, scrollTo){
   const el = document.getElementById("trail"); if (!el) return;
-  const W = Math.min(el.parentElement.clientWidth - 32, 488), GAP = 96, TOP = 70, BOT = 70;
+  const W = Math.min(el.parentElement.clientWidth - 32, 488), GAP = 100, TOP = 70, BOT = 130;
   const H = TOP + BOT + N * GAP;
   el.style.width = W + "px"; el.style.height = H + "px";
   const pts = [];
   for (let i = 0; i < N; i++) pts.push([W / 2 + Math.sin(i * 0.95 + 0.4) * W * 0.24, H - BOT - i * GAP]);
   pts.push([W / 2, TOP - 6]);
-  let d = "M" + pts[0][0].toFixed(1) + "," + pts[0][1];
-  for (let i = 1; i < pts.length; i++){ const my = (pts[i-1][1] + pts[i][1]) / 2; d += " C" + pts[i-1][0].toFixed(1) + "," + my + " " + pts[i][0].toFixed(1) + "," + my + " " + pts[i][0].toFixed(1) + "," + pts[i][1]; }
-  const frac = Math.min(S.done, N) / N;
-  let html = '<svg width="' + W + '" height="' + H + '" aria-hidden="true"><path d="' + d + '" fill="none" stroke="#D8D1EE" stroke-width="4" stroke-dasharray="1 11" stroke-linecap="round"/>' +
-    '<path d="' + d + '" fill="none" stroke="#1F9DB5" stroke-width="5" stroke-linecap="round" pathLength="1000" stroke-dasharray="1000" stroke-dashoffset="' + (1000 * (1 - frac)).toFixed(1) + '"/></svg>';
+  const P = [[pts[0][0], pts[0][1] + 95]].concat(pts);
+  let d = "M" + P[0][0].toFixed(1) + "," + P[0][1];
+  for (let i = 1; i < P.length; i++){ const my = (P[i-1][1] + P[i][1]) / 2; d += " C" + P[i-1][0].toFixed(1) + "," + my + " " + P[i][0].toFixed(1) + "," + my + " " + P[i][0].toFixed(1) + "," + P[i][1]; }
+  let html = '<svg width="' + W + '" height="' + H + '" aria-hidden="true"><path d="' + d + '" fill="none" stroke="#CFC7EA" stroke-width="22" stroke-linecap="round" opacity=".55"/>' +
+    '<path d="' + d + '" fill="none" stroke="#fff" stroke-width="2.5" stroke-dasharray="9 11" stroke-linecap="round"/>' +
+    '<path id="prog" d="' + d + '" fill="none" stroke="#1F9DB5" stroke-width="5" stroke-linecap="round" pathLength="1000" stroke-dasharray="1000" stroke-dashoffset="1000" opacity=".9"/></svg>';
   for (let i = 0; i < N; i++){
     const [x, y] = pts[i]; const s = stSummary(me, i); const open = unlocked(me, i);
     const cls = s.done ? "done" : (i === S.cur ? "cur" : "lock");
     const inner = s.done ? I.check : (open ? ar(i + 1) : I.lock);
-    const left = x > W / 2;     // الاسم على الجهة الأوسع
+    const left = x > W / 2;
     const sideX = left ? (x - 44 - 118) : (x + 44);
     html += '<button class="node ' + cls + '" style="left:' + x.toFixed(1) + "px;top:" + y + 'px" data-i="' + i + '" aria-label="المحطة ' + ar(i + 1) + (open ? "" : " مقفلة") + '"' + (open ? "" : " aria-disabled=true") + ">" + inner + "</button>" +
       '<div class="lbl ' + (left ? "l" : "r") + (open ? "" : " dim") + '" style="left:' + sideX.toFixed(1) + "px;top:" + y + 'px"><b>المحطة ' + ar(i + 1) + "</b>" + esc(STATIONS[i].t) +
@@ -403,7 +408,9 @@ function drawTrail(S){
   }
   const all = S.done === N, sp = pts[N];
   html += '<button class="node summit ' + (all ? "done" : "lock") + '" style="left:' + sp[0].toFixed(1) + "px;top:" + sp[1] + 'px" id="summit" aria-label="قمة العلا">' + I.flag + "</button>" +
-    '<div class="lbl r" style="left:' + (sp[0] + 52).toFixed(1) + "px;top:" + sp[1] + 'px;width:100px"><b>قمة العُلا</b>' + (all ? "وصلتِ!" : "بعد المحطة ٢٥") + "</div>";
+    '<div class="lbl r" style="left:' + (sp[0] + 52).toFixed(1) + "px;top:" + sp[1] + 'px;width:100px"><b>قمة العُلا</b>' + (all ? "وصلتِ!" : "بعد المحطة ٢٥") + "</div>" +
+    '<div class="start" style="left:' + P[0][0].toFixed(1) + "px;top:" + (P[0][1] + 18) + 'px">الانطلاق</div>' +
+    '<div class="car" id="car" aria-hidden="true">' + CAR + "</div>";
   el.innerHTML = html;
   el.querySelectorAll(".node[data-i]").forEach(b => b.onclick = () => {
     const i = +b.dataset.i;
@@ -411,6 +418,38 @@ function drawTrail(S){
     go(viewStation, i);
   });
   document.getElementById("summit").onclick = () => all ? go(viewSummit) : toast("أكملي المحطات الـ" + ar(N) + " لتصلي إلى القمة");
+
+  /* ---- السيارة ---- */
+  const path = el.querySelector("svg path:nth-child(3)"), prog = document.getElementById("prog"), car = document.getElementById("car");
+  const total = path.getTotalLength();
+  const Ln = new Array(N + 1).fill(0), best = new Array(N + 1).fill(1e9);
+  const tgt = pts.map(p => p);
+  for (let L = 0; L <= total; L += 3){ const q = path.getPointAtLength(L);
+    for (let k = 0; k <= N; k++){ const dd = (q.x - tgt[k][0]) ** 2 + (q.y - tgt[k][1]) ** 2; if (dd < best[k]) { best[k] = dd; Ln[k] = L; } } }
+  const OFF = 66, lenFor = k => Math.max(8, Ln[k] - OFF);
+  const place = L => {
+    const a = path.getPointAtLength(Math.max(0, L - 3)), b = path.getPointAtLength(Math.min(total, L + 3));
+    const ang = Math.atan2(b.x - a.x, -(b.y - a.y)) * 180 / Math.PI;
+    car.style.transform = "translate(" + b.x.toFixed(1) + "px," + b.y.toFixed(1) + "px) translate(-50%,-50%) rotate(" + ang.toFixed(1) + "deg)";
+    prog.setAttribute("stroke-dashoffset", (1000 * (1 - Math.min(1, (L + OFF * 0.6) / total))).toFixed(1));
+    return b.y;
+  };
+  const key = "nafis_car_" + me.id, to = Math.min(S.cur, N);
+  let from = parseInt(ls.get(key), 10); if (isNaN(from) || from > to) from = to;
+  ls.set(key, String(to));
+  const follow = y => { if (scrollTo) window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY + y - window.innerHeight * 0.55); };
+  if (from === to){ const y = place(lenFor(to)); follow(y); return; }
+  const L0 = lenFor(from), L1 = lenFor(to); let y0 = place(L0); follow(y0);
+  const dur = Math.min(3200, 1300 + (to - from) * 500), t0 = performance.now() + 550;
+  const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce){ follow(place(L1)); return; }
+  const step = now => {
+    if (!document.body.contains(car)) return;
+    const u = Math.max(0, Math.min(1, (now - t0) / dur)), e = u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+    follow(place(L0 + (L1 - L0) * e));
+    if (u < 1) requestAnimationFrame(step); else toast(to >= N ? "وصلت سيارتكِ إلى القمة!" : "انفتحت المحطة " + ar(to + 1) + " — انطلقي!");
+  };
+  requestAnimationFrame(step);
 }
 const starCount = s => s.first === s.n ? 3 : (s.first / s.n >= 0.6 ? 2 : 1);
 let _rz; window.addEventListener("resize", () => { clearTimeout(_rz); _rz = setTimeout(() => { if (document.getElementById("trail") && me) drawTrail(recSummary(me)); }, 150); });
@@ -473,21 +512,21 @@ function zoom(src){ const d = document.createElement("div"); d.className = "ligh
 function viewDone(i){
   const s = stSummary(me, i), n = starCount(s), last = i === N - 1;
   $app.innerHTML = topBar("المحطة " + ar(i + 1), esc(STATIONS[i].t), true) +
-  '<main class="wrap done"><div class="badge">' + I.check + "</div><h2>أتممتِ المحطة " + ar(i + 1) + '</h2><p class="sub" style="color:var(--muted);margin:0">كل الإجابات صحيحة، والمحطة التالية صارت مفتوحة لكِ</p>' +
+  '<main class="wrap fin"><div class="badge">' + I.check + "</div><h2>أتممتِ المحطة " + ar(i + 1) + '</h2><p class="sub" style="color:var(--muted);margin:0">كل الإجابات صحيحة، والمحطة التالية انفتحت وسيارتكِ ستتحرك إليها</p>' +
   '<div class="starrow" aria-label="' + ar(n) + ' نجوم">' + [0,1,2].map(k => I.star(k < n ? "#EE7F1F" : "#E3DEF1").replace("<svg", '<svg class="' + (k < n ? "on" : "off") + '" style="animation-delay:' + (0.25 + k * 0.28) + 's"')).join("") + "</div>" +
   '<div class="res"><span>من أول محاولة: ' + ar(s.first) + " من " + ar(s.n) + "</span><span>محاولات خاطئة: " + ar(s.wrong) + "</span></div>" +
   '<div class="quote">' + PHRASES[i] + "</div>" +
-  '<div class="stack">' + (last ? '<button class="btn orange" id="go">اصعدي إلى قمة العُلا</button>' : '<button class="btn orange" id="go">المحطة التالية</button>') +
+  '<div class="stack">' + '<button class="btn orange" id="go">' + (last ? "قودي سيارتكِ إلى القمة" : "تحرّكي إلى المحطة التالية") + "</button>" +
   '<button class="btn ghost" id="mp">العودة إلى الخريطة</button></div></main>';
   document.getElementById("bk").onclick = () => go(viewMap);
   document.getElementById("lo").onclick = logout;
   document.getElementById("mp").onclick = () => go(viewMap);
-  document.getElementById("go").onclick = () => last ? go(viewSummit) : go(viewStation, i + 1);
+  document.getElementById("go").onclick = () => go(viewMap);
 }
 function viewSummit(){
   const S = recSummary(me);
   $app.innerHTML = topBar("قمة العُلا", esc(me.name) + " · " + esc(me.cls), true) +
-  '<main class="wrap done"><div class="badge" style="border-color:var(--orange);background:var(--orange-l)"><svg viewBox="0 0 24 24" fill="none" stroke="#EE7F1F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 01-10 0V4z"/><path d="M17 5h3v2a3 3 0 01-3 3M7 5H4v2a3 3 0 003 3"/></svg></div>' +
+  '<main class="wrap fin"><div class="badge" style="border-color:var(--orange);background:var(--orange-l)"><svg viewBox="0 0 24 24" fill="none" stroke="#EE7F1F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 01-10 0V4z"/><path d="M17 5h3v2a3 3 0 01-3 3M7 5H4v2a3 3 0 003 3"/></svg></div>' +
   "<h2>وصلتِ إلى قمة العُلا!</h2>" +
   '<div class="res" style="margin-top:8px"><span>' + ar(S.solved) + " سؤالًا محلولًا</span><span>الإتقان من أول محاولة: " + ar(S.acc) + "٪</span></div>" +
   '<div class="quote">' + PHRASES[N - 1] + "<br><small style=\"font-weight:400;color:var(--muted);font-size:14px\">" + esc(me.name) + " · " + teacherLine() + "</small></div>" +
@@ -529,7 +568,7 @@ function renderTeacher(){
     T.src === "remote-fail" ? '<div class="note warn">تعذّر الاتصال بقاعدة البيانات، وتُعرض البيانات المحفوظة على هذا الجهاز. تأكدي من الإنترنت ومن بيانات الربط.</div>' :
     '<div class="note">النتائج مباشرة من قاعدة البيانات المشتركة، وتشمل جميع الطالبات.</div>';
   $app.innerHTML =
-  '<header class="bar"><div class="wrap wide"><div class="in2"><img src="' + LOGO + '" alt=""><div class="ttl"><b>لوحة المعلمة</b><small>' + teacherLine() + '</small></div>' +
+  '<header class="bar"><div class="wrap wide"><div class="in2"><img src="' + LOGO + '" alt=""><div class="ttl"><b>لوحة المعلمة</b><small>' + (CONFIG.schoolName ? schoolLine() + " · " : "") + teacherLine() + '</small></div>' +
   '<button class="ico" id="rf" aria-label="تحديث" title="تحديث"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 11-2.6-5.9M20 4v5h-5"/></svg></button>' +
   '<button class="ico" id="lo" aria-label="خروج">' + I.out + "</button></div></div></header>" +
   '<main class="wrap wide" style="padding-bottom:50px">' +
