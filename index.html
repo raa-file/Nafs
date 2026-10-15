@@ -259,26 +259,46 @@ const sb = {
   async put(rec){ const r = await fetch(this.base() + "?on_conflict=id", { method: "POST", headers: this.head({ Prefer: "resolution=merge-duplicates,return=minimal" }), body: JSON.stringify(toRow(rec)) }); if (!r.ok) throw new Error(r.status); },
   async del(id){ const r = await fetch(this.base() + "?id=eq." + encodeURIComponent(id), { method: "DELETE", headers: this.head() }); if (!r.ok) throw new Error(r.status); }
 };
-const toRow = r => ({ id: r.id, name: r.name, cls: r.cls, pin: r.pin, data: { st: r.st, created: r.created }, updated_at: new Date(r.updated).toISOString() });
-const fromRow = x => ({ id: x.id, name: x.name, cls: x.cls, pin: x.pin, st: (x.data && x.data.st) || {}, created: (x.data && x.data.created) || Date.parse(x.updated_at), updated: Date.parse(x.updated_at) });
+const toRow = r => ({ id: r.id, name: r.name, cls: r.cls, pin: r.pin, data: { st: r.st, created: r.created, rs: r.rs || 0 }, updated_at: new Date(r.updated).toISOString() });
+const fromRow = x => ({ id: x.id, name: x.name, cls: x.cls, pin: x.pin, st: (x.data && x.data.st) || {}, created: (x.data && x.data.created) || Date.parse(x.updated_at), rs: (x.data && x.data.rs) || 0, updated: Date.parse(x.updated_at) });
 
-let syncState = "idle";
+let syncState = "idle", dirty = false;
 async function saveRec(rec){
   rec.updated = Date.now(); localPut(rec);
   if (!remoteOn()) { syncState = "local"; paintSync(); return; }
-  try { syncState = "saving"; paintSync(); await sb.put(rec); syncState = "ok"; } catch(e){ syncState = "bad"; }
+  try { syncState = "saving"; paintSync(); await sb.put(rec); syncState = "ok"; dirty = false; } catch(e){ syncState = "bad"; dirty = true; }
   paintSync();
 }
+function flushSync(){ if (dirty && me && remoteOn() && syncState !== "saving") saveRec(me); }
+window.addEventListener("online", flushSync);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) flushSync(); });
+setInterval(flushSync, 20000);
 function paintSync(){
   const el = document.getElementById("sync"); if (!el) return;
-  const m = { local: ["محفوظ على هذا الجهاز", ""], saving: ["جارٍ الحفظ…", ""], ok: ["تم الحفظ ✓", ""], bad: ["لا يوجد اتصال — محفوظ على الجهاز", "bad"], idle: ["", ""] }[syncState];
+  const m = { local: ["محفوظ على هذا الجهاز", ""], saving: ["جارٍ الحفظ…", ""], ok: ["تم الحفظ ✓", ""], bad: ["لم تصل نتيجتكِ للمعلمة بعد — تأكدي من الإنترنت", "bad"], idle: ["", ""] }[syncState];
   el.textContent = m[0]; el.className = "sync " + m[1];
+}
+/* دمج نسختين من تقدّم الطالبة: الأعلى تقدّمًا يبقى، إلا ما أعادت المعلمة تعيينه */
+function mergeRec(a, b){
+  if (!a) return b; if (!b) return a;
+  const rs = Math.max(a.rs || 0, b.rs || 0);
+  const pa = (a.rs || 0) < rs ? {} : (a.st || {}), pb = (b.rs || 0) < rs ? {} : (b.st || {});
+  const out = Object.assign({}, a.updated >= b.updated ? a : b);
+  out.rs = rs; out.created = Math.min(a.created || Infinity, b.created || Infinity); out.st = {};
+  new Set([...Object.keys(pa), ...Object.keys(pb)]).forEach(i => {
+    const x = pa[i], y = pb[i];
+    if (!x || !y) { out.st[i] = JSON.parse(JSON.stringify(x || y)); return; }
+    const n = Math.max(x.q.length, y.q.length), q = [];
+    for (let k = 0; k < n; k++) { const p = x.q[k] || { w: 0, ok: 0 }, r = y.q[k] || { w: 0, ok: 0 }; q.push({ ok: (p.ok || r.ok) ? 1 : 0, w: Math.max(p.w || 0, r.w || 0) }); }
+    out.st[i] = { q }; const d = x.d || y.d; if (d) out.st[i].d = d;
+  });
+  return out;
 }
 
 /* ---------- نموذج التقدّم ---------- */
 function newRec(name, cls, pin){
   const id = makeId(name, cls);
-  return { id, name: name.replace(/\s+/g, " ").trim(), cls, pin: pinHash(pin, id), created: Date.now(), updated: Date.now(), st: {} };
+  return { id, name: name.replace(/\s+/g, " ").trim(), cls, pin: pinHash(pin, id), created: Date.now(), updated: Date.now(), rs: 0, st: {} };
 }
 const stOf = (rec, i) => rec.st[i] || (rec.st[i] = { q: STATIONS[i].q.map(() => ({ w: 0, ok: 0 })) });
 function stSummary(rec, i){
@@ -349,12 +369,17 @@ function viewLogin(tab = "s", msg = ""){
     if (name.split(/\s+/).length < 2) return viewLogin("s", "اكتبي اسمكِ من كلمتين على الأقل.");
     if (!/^\d{4}$/.test(pin)) return viewLogin("s", "الرمز السري يتكوّن من ٤ أرقام.");
     const btn = fs.querySelector("button"); btn.disabled = true; btn.textContent = "جارٍ الدخول…";
-    const id = makeId(name, cls); let rec = null;
-    try { rec = remoteOn() ? await sb.get(id) : null; } catch(e){ rec = null; }
-    if (!rec) rec = localAll()[id] || null;
+    const id = makeId(name, cls); let remote = null, failed = false;
+    if (remoteOn()) { try { remote = await sb.get(id); } catch(e){ failed = true; } }
+    const local = localAll()[id] || null;
+    if (failed && !local) return viewLogin("s", "تعذّر الاتصال بالإنترنت. تأكدي من الاتصال ثم حاولي مرة أخرى.");
+    let rec = remote ? mergeRec(remote, local) : local;
     if (rec) {
-      if (rec.pin !== pinHash(pin, id)) return viewLogin("s", "الرمز السري غير صحيح لهذا الاسم.");
-    } else { rec = newRec(name, cls, pin); await saveRec(rec); }
+      const pinOk = (remote || local).pin;
+      if (pinOk !== pinHash(pin, id)) return viewLogin("s", "الرمز السري غير صحيح لهذا الاسم.");
+      rec.pin = pinOk;
+    } else { rec = newRec(name, cls, pin); }
+    saveRec(rec);
     me = rec; ls.set(KEY_ME, id); go(viewMap);
   };
   if (ft) ft.onsubmit = e => { e.preventDefault(); if (document.getElementById("tp").value === CONFIG.teacherPassword) go(viewTeacher); else viewLogin("t", "الرمز غير صحيح."); };
@@ -537,16 +562,17 @@ function viewSummit(){
 }
 
 /* ===================== لوحة المعلمة ===================== */
-let T = { rows: [], q: "", cls: "", sort: "recent", open: null, src: "" };
+let T = { rows: [], q: "", cls: "", sort: "recent", open: null, src: "", err: "", at: 0, timer: 0 };
 async function loadTeacher(){
   let rows = [], src = "local";
-  if (remoteOn()) { try { rows = await sb.all(); src = "remote"; } catch(e){ rows = Object.values(localAll()); src = "remote-fail"; } }
+  if (remoteOn()) { try { rows = await sb.all(); src = "remote"; T.err = ""; T.at = Date.now(); } catch(e){ rows = Object.values(localAll()); src = "remote-fail"; T.err = e.message || ""; } }
   else rows = Object.values(localAll());
   T.rows = rows; T.src = src;
 }
 async function viewTeacher(){
   $app.innerHTML = '<div class="empty">جارٍ تحميل النتائج…</div>';
   await loadTeacher(); renderTeacher();
+  if (!T.timer) T.timer = setInterval(async () => { const a = document.activeElement; if (!document.getElementById("rf") || (a && a.id === "sq")) return; await loadTeacher(); if (document.getElementById("rf")) renderTeacher(); }, 30000);
 }
 function renderTeacher(){
   const q = normName(T.q);
@@ -565,8 +591,8 @@ function renderTeacher(){
   const accs = all.filter(s => s.acc !== null); const avgA = accs.length ? Math.round(accs.reduce((a, s) => a + s.acc, 0) / accs.length) : null;
   const classes = [...new Set([...CONFIG.classes, ...T.rows.map(r => r.cls)])];
   const noteHtml = T.src === "local" ? '<div class="note warn">تُعرض هنا نتائج الطالبات المحفوظة على هذا الجهاز فقط. لعرض نتائج جميع الطالبات من أي جهاز، فعّلي الربط بقاعدة البيانات كما في ملف «آلية عمل الموقع».</div>' :
-    T.src === "remote-fail" ? '<div class="note warn">تعذّر الاتصال بقاعدة البيانات، وتُعرض البيانات المحفوظة على هذا الجهاز. تأكدي من الإنترنت ومن بيانات الربط.</div>' :
-    '<div class="note">النتائج مباشرة من قاعدة البيانات المشتركة، وتشمل جميع الطالبات.</div>';
+    T.src === "remote-fail" ? '<div class="note warn">تعذّر الاتصال بقاعدة البيانات' + (T.err ? " (رمز الخطأ: " + esc(T.err) + ")" : "") + '، وتُعرض البيانات المحفوظة على هذا الجهاز. تأكدي من الإنترنت ومن بيانات الربط.</div>' :
+    '<div class="note">النتائج مباشرة من قاعدة البيانات المشتركة · عدد السجلات: ' + ar(T.rows.length) + ' · آخر تحديث ' + new Date(T.at || Date.now()).toLocaleTimeString("ar-EG", { hour: "numeric", minute: "2-digit" }) + '</div>' + (T.rows.length === 0 ? '<div class="note warn">لا توجد سجلات في قاعدة البيانات حتى الآن. إن كانت الطالبات قد سجّلن فعلًا فتأكدي من تنفيذ كود الجدول والسياسة في سوبابيس، وأن الطالبات يفتحن أحدث نسخة من الرابط.</div>' : "");
   $app.innerHTML =
   '<header class="bar"><div class="wrap wide"><div class="in2"><img src="' + LOGO + '" alt=""><div class="ttl"><b>لوحة المعلمة</b><small>' + (CONFIG.schoolName ? schoolLine() + " · " : "") + teacherLine() + '</small></div>' +
   '<button class="ico" id="rf" aria-label="تحديث" title="تحديث"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 11-2.6-5.9M20 4v5h-5"/></svg></button>' +
@@ -611,7 +637,7 @@ function stuHtml({ r, S }){
 const fmtDate = t => { try { return new Date(t).toLocaleString("ar-EG", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }); } catch(e){ return ""; } };
 async function resetStudent(id){
   const r = T.rows.find(x => x.id === id); if (!r || !confirm("إعادة تعيين تقدّم «" + r.name + "» من البداية؟")) return;
-  r.st = {}; await saveRec(r); renderTeacher();
+  r.st = {}; r.rs = Date.now(); await saveRec(r); renderTeacher();
 }
 async function deleteStudent(id){
   const r = T.rows.find(x => x.id === id); if (!r || !confirm("حذف «" + r.name + "» نهائيًا مع نتائجها؟")) return;
@@ -630,9 +656,10 @@ function exportCSV(list){
 (async function init(){
   const id = ls.get(KEY_ME);
   if (id) {
-    let rec = localAll()[id] || null;
-    if (remoteOn()) { try { const r2 = await sb.get(id); if (r2) rec = r2; } catch(e){} }
-    if (rec) { me = rec; syncState = remoteOn() ? "ok" : "local"; return viewMap(); }
+    const local = localAll()[id] || null; let remote = null;
+    if (remoteOn()) { try { remote = await sb.get(id); } catch(e){} }
+    const rec = mergeRec(remote, local);
+    if (rec) { if (remote) rec.pin = remote.pin; me = rec; if (remoteOn()) saveRec(rec); else syncState = "local"; return viewMap(); }
   }
   viewLogin();
 })();
